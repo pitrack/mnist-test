@@ -13,16 +13,16 @@ import time
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
-        self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
+        self.conv1 = nn.Conv2d(1, args.conv1, kernel_size=5)
+        self.conv2 = nn.Conv2d(args.conv1, args.conv2, kernel_size=5)
         self.conv2_drop = nn.Dropout2d()
-        self.fc1 = nn.Linear(320, 50)
-        self.fc2 = nn.Linear(50, 10)
+        self.fc1 = nn.Linear(16*args.conv2, args.fc1)
+        self.fc2 = nn.Linear(args.fc1, 10)
 
     def forward(self, x):
         x = F.relu(F.max_pool2d(self.conv1(x), 2))
         x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
-        x = x.view(-1, 320)
+        x = x.view(-1, 16*args.conv2)
         x = F.relu(self.fc1(x))
         x = F.dropout(x, training=self.training)
         x = self.fc2(x)
@@ -62,18 +62,17 @@ def test():
         test_loss, correct, len(test_loader.dataset),
         100. * correct / len(test_loader.dataset)))
 
-def memory_monitor(interval):
+def memory_monitor(interval,args):
     nvmlInit()
     handle=nvmlDeviceGetHandleByIndex(0)
     while True:
         info = nvmlDeviceGetMemoryInfo(handle)
-        print("Used memory: {}".format(info.used))
+        f = open("result-{}-{}-{}.csv".format(args.conv1,args.conv2,args.fc1),"a")
+        print("{}, {}".format(time.time(),info.used),file=f)
         time.sleep(interval)
 
 if __name__=="__main__":
-    p=multiprocessing.Process(target=memory_monitor,args=(0.1,))
-    p.daemon=True
-    p.start()
+
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',
@@ -94,10 +93,15 @@ if __name__=="__main__":
                         help='how many batches to wait before logging training status')
     parser.add_argument('--fashion', action='store_true', default=False,
                         help='use MNIST fashion instead')
-        
+    parser.add_argument('--memory-log-interval',type=float, default=0.1,help="interval between memory log")
+    parser.add_argument('--conv1',type=int, default=10,help="conv1 size")
+    parser.add_argument('--conv2',type=int,default=10,help="conv2 size")
+    parser.add_argument('--fc1',type=int,default=50,help="fc size")
     args = parser.parse_args()
     args.cuda = not args.no_cuda and torch.cuda.is_available()
-
+    p=multiprocessing.Process(target=memory_monitor,args=(args.memory_log_interval,args))
+    p.daemon=True
+    p.start()
     torch.manual_seed(args.seed)
     if args.cuda:
         torch.cuda.manual_seed(args.seed)
